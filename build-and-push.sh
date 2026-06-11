@@ -1,67 +1,66 @@
 #!/bin/bash
+# ===========================================
+# 构建并推送 Docker 镜像到 Docker Hub
+# 用法: ./build-and-push.sh [tag]
+# ===========================================
+
 set -e
 
-# Docker Hub 用户名
-DOCKER_USER="${DOCKER_USER:-liangdiandian}"
+TAG=${1:-"latest"}
+DOCKER_USER="sexyfeifan"
+BACKEND_IMAGE="$DOCKER_USER/blog-backend:$TAG"
+FRONTEND_IMAGE="$DOCKER_USER/blog-frontend:$TAG"
 
-# 镜像标签
-TAG="${TAG:-latest}"
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
-# 目标平台 (可选: linux/amd64,linux/arm64)
-PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
+echo -e "${GREEN}=========================================${NC}"
+echo -e "${GREEN}   构建并推送 Docker 镜像${NC}"
+echo -e "${GREEN}   用户: $DOCKER_USER${NC}"
+echo -e "${GREEN}   标签: $TAG${NC}"
+echo -e "${GREEN}=========================================${NC}"
 
-echo "=========================================="
-echo "交叉编译并推送到 Docker Hub"
-echo "=========================================="
-echo "Docker 用户: $DOCKER_USER"
-echo "标签: $TAG"
-echo "目标平台: $PLATFORMS"
-echo "=========================================="
-
-# 创建/使用 buildx builder
-BUILDER_NAME="multiarch-builder"
-if ! docker buildx inspect $BUILDER_NAME > /dev/null 2>&1; then
-    echo "创建 buildx builder..."
-    docker buildx create --name $BUILDER_NAME --driver docker-container --bootstrap
+# 检查 Docker 是否运行
+if ! docker info > /dev/null 2>&1; then
+    echo -e "${RED}Docker 未运行，请先启动 Docker${NC}"
+    exit 1
 fi
-docker buildx use $BUILDER_NAME
 
-# 构建并推送后端
-echo ""
-echo "=========================================="
-echo "构建后端镜像 (Rust)..."
-echo "=========================================="
-docker buildx build \
-    --platform $PLATFORMS \
-    --tag $DOCKER_USER/blog-backend:$TAG \
-    --tag $DOCKER_USER/blog-backend:$(date +%Y%m%d) \
-    --push \
-    ./backend
+# 检查是否登录 Docker Hub
+if ! docker info 2>&1 | grep -q "Username"; then
+    echo -e "${YELLOW}未登录 Docker Hub，正在登录...${NC}"
+    docker login
+fi
 
-echo "✅ 后端镜像推送成功: $DOCKER_USER/blog-backend:$TAG"
+# 构建后端镜像
+echo -e "${GREEN}[1/4] 构建后端镜像...${NC}"
+docker build -t "$BACKEND_IMAGE" ./backend
+echo -e "${GREEN}✅ 后端镜像构建完成${NC}"
 
-# 构建并推送前端
-echo ""
-echo "=========================================="
-echo "构建前端镜像 (Next.js)..."
-echo "=========================================="
-docker buildx build \
-    --platform $PLATFORMS \
-    --tag $DOCKER_USER/blog-frontend:$TAG \
-    --tag $DOCKER_USER/blog-frontend:$(date +%Y%m%d) \
-    --push \
-    ./frontend
+# 构建前端镜像
+echo -e "${GREEN}[2/4] 构建前端镜像...${NC}"
+docker build -t "$FRONTEND_IMAGE" ./frontend
+echo -e "${GREEN}✅ 前端镜像构建完成${NC}"
 
-echo "✅ 前端镜像推送成功: $DOCKER_USER/blog-frontend:$TAG"
+# 推送后端镜像
+echo -e "${GREEN}[3/4] 推送后端镜像到 Docker Hub...${NC}"
+docker push "$BACKEND_IMAGE"
+echo -e "${GREEN}✅ 后端镜像推送完成${NC}"
 
-echo ""
-echo "=========================================="
-echo "🎉 全部完成!"
-echo "=========================================="
-echo "镜像已推送到 Docker Hub:"
-echo "  - $DOCKER_USER/blog-backend:$TAG"
-echo "  - $DOCKER_USER/blog-frontend:$TAG"
-echo ""
-echo "在目标服务器上拉取:"
-echo "  docker pull $DOCKER_USER/blog-backend:$TAG"
-echo "  docker pull $DOCKER_USER/blog-frontend:$TAG"
+# 推送前端镜像
+echo -e "${GREEN}[4/4] 推送前端镜像到 Docker Hub...${NC}"
+docker push "$FRONTEND_IMAGE"
+echo -e "${GREEN}✅ 前端镜像推送完成${NC}"
+
+echo -e "${GREEN}=========================================${NC}"
+echo -e "${GREEN}   全部完成！${NC}"
+echo -e "${GREEN}=========================================${NC}"
+echo -e ""
+echo -e "镜像地址："
+echo -e "  后端: ${YELLOW}$BACKEND_IMAGE${NC}"
+echo -e "  前端: ${YELLOW}$FRONTEND_IMAGE${NC}"
+echo -e ""
+echo -e "在服务器上部署："
+echo -e "  ${YELLOW}docker compose pull && docker compose up -d${NC}"
