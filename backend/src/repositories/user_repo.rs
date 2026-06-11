@@ -130,4 +130,53 @@ impl UserRepository {
 
         Ok(result)
     }
+
+    /// Update user account info (username, nickname, email)
+    pub async fn update_account(
+        pool: &PgPool,
+        user_id: i64,
+        username: Option<&str>,
+        nickname: Option<&str>,
+        email: Option<&str>,
+    ) -> Result<User, ApiError> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            UPDATE users
+            SET
+                username = COALESCE($2, username),
+                nickname = COALESCE($3, nickname),
+                email = COALESCE($4, email),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, username, password_hash, email, nickname, avatar, created_at, updated_at
+            "#,
+        )
+        .bind(user_id)
+        .bind(username)
+        .bind(nickname)
+        .bind(email)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(user)
+    }
+
+    /// Check if username already exists for a different user
+    pub async fn username_exists_exclude(
+        pool: &PgPool,
+        username: &str,
+        exclude_id: i64,
+    ) -> Result<bool, ApiError> {
+        let result = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS(SELECT 1 FROM users WHERE username = $1 AND id != $2)
+            "#,
+        )
+        .bind(username)
+        .bind(exclude_id)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(result)
+    }
 }

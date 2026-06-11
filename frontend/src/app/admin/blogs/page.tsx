@@ -14,6 +14,7 @@ import {
     FileCode,
     Loader2,
     Sparkles,
+    Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,9 +44,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { blogApi, aiApi } from "@/lib/api";
-import type { Blog, PaginatedResponse } from "@/types";
+import { blogApi, aiApi, categoryApi } from "@/lib/api";
+import type { Blog, PaginatedResponse, Category } from "@/types";
 import { toast } from "sonner";
 
 export default function BlogListPage() {
@@ -62,6 +64,12 @@ export default function BlogListPage() {
     const [summarizeDialogOpen, setSummarizeDialogOpen] = useState(false);
     const [summarizeOnlyEmpty, setSummarizeOnlyEmpty] = useState(true);
     const [summarizeConcurrency, setSummarizeConcurrency] = useState("3");
+    const [importDialogOpen, setImportDialogOpen] = useState(false);
+    const [importContent, setImportContent] = useState("");
+    const [importCategoryId, setImportCategoryId] = useState<string>("none");
+    const [importStatus, setImportStatus] = useState("draft");
+    const [isImporting, setIsImporting] = useState(false);
+    const [categories, setCategories] = useState<Category[]>([]);
     const pageSize = 10;
 
     const fetchBlogs = useCallback(async (page: number) => {
@@ -79,6 +87,7 @@ export default function BlogListPage() {
     useEffect(() => {
         fetchBlogs(currentPage);
         aiApi.status().then((res) => setAiEnabled(res.enabled)).catch(() => setAiEnabled(false));
+        categoryApi.list().then(setCategories).catch(() => {});
     }, [currentPage, fetchBlogs]);
 
     const handleDelete = async () => {
@@ -153,6 +162,70 @@ export default function BlogListPage() {
         }
     };
 
+    const handleImportMarkdown = async () => {
+        if (!importContent.trim()) {
+            toast.error("请输入 Markdown 内容");
+            return;
+        }
+        setIsImporting(true);
+        try {
+            await blogApi.importMarkdown({
+                content: importContent,
+                category_id: importCategoryId && importCategoryId !== "none" ? parseInt(importCategoryId) : undefined,
+                status: importStatus,
+            });
+            toast.success("Markdown 文章导入成功");
+            setImportDialogOpen(false);
+            setImportContent("");
+            fetchBlogs(currentPage);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "导入失败");
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.name.endsWith(".md") && !file.name.endsWith(".markdown")) {
+            toast.error("请选择 .md 或 .markdown 文件");
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const text = ev.target?.result;
+            if (typeof text === "string") {
+                setImportContent(text);
+                toast.success(`已加载文件: ${file.name}`);
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = "";
+    };
+
+    const parseImportPreview = () => {
+        if (!importContent.trim().startsWith("---")) return null;
+        const afterFirst = importContent.slice(3);
+        const endIdx = afterFirst.indexOf("\n---");
+        if (endIdx === -1) return null;
+        const fm = afterFirst.slice(0, endIdx);
+        let title = "";
+        let date = "";
+        let tags = "";
+        for (const line of fm.split("\n")) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("title:")) {
+                title = trimmed.slice(6).trim().replace(/^["']|["']$/g, "");
+            } else if (trimmed.startsWith("date:")) {
+                date = trimmed.slice(5).trim();
+            } else if (trimmed.startsWith("tags:")) {
+                tags = trimmed.slice(5).trim();
+            }
+        }
+        return { title, date, tags };
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -190,6 +263,15 @@ export default function BlogListPage() {
                             <FileCode className="mr-2 h-4 w-4" />
                         )}
                         批量转换
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setImportDialogOpen(true)}
+                        title="从 Markdown 导入文章"
+                    >
+                        <Upload className="mr-2 h-4 w-4" />
+                        导入 Markdown
                     </Button>
                     <Button
                         variant="outline"
@@ -423,6 +505,110 @@ export default function BlogListPage() {
                         <Button onClick={handleBatchSummarize}>
                             <Sparkles className="mr-2 h-4 w-4" />
                             开始生成
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>导入 Markdown 文章</DialogTitle>
+                        <DialogDescription>
+                            粘贴带 YAML front matter 的 Markdown 内容，或上传 .md 文件
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" size="sm" asChild>
+                                <label className="cursor-pointer">
+                                    <Upload className="mr-2 h-4 w-4" />
+                                    上传 .md 文件
+                                    <input
+                                        type="file"
+                                        accept=".md,.markdown"
+                                        className="hidden"
+                                        onChange={handleFileUpload}
+                                    />
+                                </label>
+                            </Button>
+                            {importContent && (
+                                <span className="text-sm text-muted-foreground">
+                                    已加载 {importContent.length} 字符
+                                </span>
+                            )}
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="import-content">Markdown 内容</Label>
+                            <Textarea
+                                id="import-content"
+                                value={importContent}
+                                onChange={(e) => setImportContent(e.target.value)}
+                                placeholder={`---
+title: "文章标题"
+date: 2024-01-01
+tags: [tag1, tag2]
+---
+
+文章正文内容...`}
+                                rows={12}
+                                className="font-mono text-sm"
+                            />
+                        </div>
+                        {(() => {
+                            const preview = parseImportPreview();
+                            if (!preview) return null;
+                            return (
+                                <div className="rounded-lg border p-3 space-y-1 text-sm">
+                                    <p><strong>预览：</strong></p>
+                                    {preview.title && <p>标题：{preview.title}</p>}
+                                    {preview.date && <p>日期：{preview.date}</p>}
+                                    {preview.tags && <p>标签：{preview.tags}</p>}
+                                </div>
+                            );
+                        })()}
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <Label htmlFor="import-category">分类</Label>
+                                <Select value={importCategoryId} onValueChange={setImportCategoryId}>
+                                    <SelectTrigger id="import-category">
+                                        <SelectValue placeholder="选择分类（可选）" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">无分类</SelectItem>
+                                        {categories.map((cat) => (
+                                            <SelectItem key={cat.id} value={String(cat.id)}>
+                                                {cat.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="import-status">状态</Label>
+                                <Select value={importStatus} onValueChange={setImportStatus}>
+                                    <SelectTrigger id="import-status">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="draft">草稿</SelectItem>
+                                        <SelectItem value="published">发布</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                            取消
+                        </Button>
+                        <Button onClick={handleImportMarkdown} disabled={isImporting || !importContent.trim()}>
+                            {isImporting ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <Upload className="mr-2 h-4 w-4" />
+                            )}
+                            导入
                         </Button>
                     </DialogFooter>
                 </DialogContent>

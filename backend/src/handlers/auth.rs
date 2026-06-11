@@ -3,7 +3,11 @@
 use axum::{extract::State, Json};
 
 use crate::error::{ApiError, ApiResponse};
-use crate::models::user::{LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse};
+use crate::middleware::auth::AuthUser;
+use crate::models::user::{
+    ChangePasswordRequest, CreateUserRequest, LoginRequest, LoginResponse, RefreshTokenRequest,
+    RefreshTokenResponse, UpdateAccountRequest, UserResponse,
+};
 use crate::repositories::user_repo::UserRepository;
 use crate::services::auth_service::AuthService;
 use crate::AppState;
@@ -80,7 +84,6 @@ pub async fn refresh_token(
     Ok(Json(ApiResponse::success(response)))
 }
 
-use crate::models::user::CreateUserRequest;
 use serde::Serialize;
 
 /// Check if any admin exists response
@@ -145,4 +148,83 @@ pub async fn setup_admin(
     tracing::info!("First admin user '{}' created successfully", req.username);
 
     Ok(Json(ApiResponse::success(response)))
+}
+
+/// PUT /api/v1/admin/account
+///
+/// Update current user's account info (username, nickname, email)
+pub async fn update_account(
+    State(state): State<AppState>,
+    AuthUser { user_id, .. }: AuthUser,
+    Json(req): Json<UpdateAccountRequest>,
+) -> Result<Json<ApiResponse<UserResponse>>, ApiError> {
+    // Validate username if provided
+    if let Some(ref username) = req.username {
+        if username.trim().is_empty() {
+            return Err(ApiError::ValidationError(
+                "Username cannot be empty".to_string(),
+            ));
+        }
+        // Check if username is taken by another user
+        if UserRepository::username_exists_exclude(&state.db, username, user_id).await? {
+            return Err(ApiError::ValidationError(format!(
+                "Username '{}' is already taken",
+                username
+            )));
+        }
+    }
+
+    let user = UserRepository::update_account(
+        &state.db,
+        user_id,
+        req.username.as_deref(),
+        req.nickname.as_deref(),
+        req.email.as_deref(),
+    )
+    .await?;
+
+    tracing::info!("Updated account for user '{}'", user.username);
+
+    Ok(Json(ApiResponse::success(UserResponse::from(user))))
+}
+
+/// PUT /api/v1/admin/account/password
+///
+/// Change current user's password
+pub async fn change_password(
+    State(state): State<AppState>,
+    AuthUser { user_id, .. }: AuthUser,
+    Json(req): Json<ChangePasswordRequest>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    // Validate input
+    if req.current_password.is_empty() {
+        return Err(ApiError::ValidationError(
+            "Current password is required".to_string(),
+        ));
+    }
+    if req.new_password.len() < 6 {
+        return Err(ApiError::ValidationError(
+            "New password must be at least 6 characters".to_string(),
+        ));
+    }
+
+    // Get current user
+    let user = UserRepository::find_by_id(&state.db, user_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
+
+    // Verify current password
+    let is_valid = UserRepository::verify_password(&req.current_password, &user.password_hash)?;
+    if !is_valid {
+        return Err(ApiError::Unauthorized(
+            "Current password is incorrect".to_string(),
+        ));
+    }
+
+    // Update password
+    UserRepository::update_password(&state.db, user_id, &req.new_password).await?;
+
+    tracing::info!("Password changed for user '{}'", user.username);
+
+    Ok(Json(ApiResponse::ok()))
 }

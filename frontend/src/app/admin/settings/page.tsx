@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Save, Loader2, Globe, User, Link2, Shield, Database, Sparkles, PlugZap } from "lucide-react";
+import { Save, Loader2, Globe, User, Link2, Shield, Database, Sparkles, PlugZap, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import {
     StorageTab,
     AiConfigTab,
     McpConfigTab,
+    AccountTab,
 } from "./settings-tabs";
 
 export default function SettingsPage() {
@@ -130,6 +131,10 @@ export default function SettingsPage() {
                         <PlugZap className="h-4 w-4" />
                         MCP配置
                     </TabsTrigger>
+                    <TabsTrigger value="account" className="gap-2">
+                        <KeyRound className="h-4 w-4" />
+                        账号管理
+                    </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="site">
@@ -152,6 +157,9 @@ export default function SettingsPage() {
                 </TabsContent>
                 <TabsContent value="mcp">
                     <McpConfigTab />
+                </TabsContent>
+                <TabsContent value="account">
+                    <AccountTab />
                 </TabsContent>
             </Tabs>
         </div>

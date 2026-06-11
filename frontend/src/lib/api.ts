@@ -30,6 +30,7 @@ import type {
   LoginRequest,
   LoginResponse,
   RefreshTokenRequest,
+  UserResponse,
   ArchiveResponse,
   SearchResult,
   DashboardStats,
@@ -195,6 +196,12 @@ export const blogApi = {
   convertMarkdown: () =>
     request<BatchConvertResult>("/admin/blogs/convert-markdown", {
       method: "POST",
+    }),
+
+  importMarkdown: (data: { content: string; category_id?: number; status?: string }) =>
+    request<Blog>("/admin/blogs/import-markdown", {
+      method: "POST",
+      body: JSON.stringify(data),
     }),
 };
 
@@ -489,6 +496,21 @@ export const authApi = {
   setup: (data: SetupAdminRequest) =>
     request<LoginResponse>("/auth/setup", {
       method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
+
+// Account API
+export const accountApi = {
+  update: (data: { username?: string; nickname?: string; email?: string }) =>
+    request<UserResponse>("/admin/account", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  changePassword: (data: { current_password: string; new_password: string }) =>
+    request<void>("/admin/account/password", {
+      method: "PUT",
       body: JSON.stringify(data),
     }),
 };

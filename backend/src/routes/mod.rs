@@ -59,6 +59,8 @@ pub fn create_routes() -> Router<AppState> {
 /// This function takes AppState to properly set up the middleware
 pub fn create_admin_routes(state: AppState) -> Router<AppState> {
     Router::new()
+        // Auth admin routes
+        .merge(auth::admin_routes())
         // Blog admin routes
         .merge(blog::admin_routes())
         // Category admin routes

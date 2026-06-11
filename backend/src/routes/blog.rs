@@ -21,6 +21,7 @@ pub fn admin_routes() -> Router<AppState> {
     Router::new()
         .route("/blogs", get(blog::admin_list_blogs))
         .route("/blogs", post(blog::create_blog))
+        .route("/blogs/import-markdown", post(blog::import_markdown))
         .route("/blogs/{id}", get(blog::admin_get_blog))
         .route("/blogs/{id}", put(blog::update_blog))
         .route("/blogs/{id}", delete(blog::delete_blog))

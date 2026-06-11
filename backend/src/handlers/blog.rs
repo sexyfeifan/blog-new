@@ -8,10 +8,13 @@ use axum::{
 use std::net::SocketAddr;
 
 use crate::error::{ApiError, ApiResponse, PaginatedData};
+use crate::middleware::auth::AuthUser;
 use crate::models::blog::{
-    BlogDetail, BlogListItem, BlogQueryParams, BlogResponse, CreateBlogRequest, UpdateBlogRequest,
+    BlogDetail, BlogListItem, BlogQueryParams, BlogResponse, CreateBlogRequest,
+    ImportMarkdownRequest, UpdateBlogRequest,
 };
 use crate::repositories::blog_repo::BlogRepository;
+use crate::repositories::tag_repo::TagRepository;
 use crate::services::blog_service::BlogService;
 use crate::services::cache_service::{cache_keys, cache_ttl};
 use crate::utils::markdown::render_markdown;
@@ -472,4 +475,185 @@ pub async fn batch_convert_markdown(
     );
 
     Ok(Json(ApiResponse::success(result)))
+}
+
+fn parse_front_matter(content: &str) -> (Option<String>, Option<String>, Option<Vec<String>>, Option<Vec<String>>, String) {
+    if !content.starts_with("---") {
+        return (None, None, None, None, content.to_string());
+    }
+
+    let after_first = &content[3..];
+    let end_idx = if let Some(pos) = after_first.find("\n---") {
+        pos
+    } else if after_first.starts_with("\r\n---") {
+        return (None, None, None, None, content.to_string());
+    } else {
+        return (None, None, None, None, content.to_string());
+    };
+
+    let front_matter = &after_first[..end_idx];
+    let body_start = end_idx + 4; // \n---
+    let body = if body_start < after_first.len() {
+        let rest = &after_first[body_start..];
+        if rest.starts_with('\n') {
+            &rest[1..]
+        } else if rest.starts_with("\r\n") {
+            &rest[2..]
+        } else {
+            rest
+        }
+    } else {
+        ""
+    };
+
+    let mut title = None;
+    let mut date = None;
+    let mut tags = None;
+    let mut categories = None;
+
+    for line in front_matter.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if let Some((key, value)) = line.split_once(':') {
+            let key = key.trim();
+            let value = value.trim();
+
+            match key {
+                "title" => {
+                    let v = value.trim_matches(|c| c == '"' || c == '\'');
+                    if !v.is_empty() {
+                        title = Some(v.to_string());
+                    }
+                }
+                "date" => {
+                    if !value.is_empty() {
+                        date = Some(value.to_string());
+                    }
+                }
+                "tags" => {
+                    let parsed = parse_yaml_list(value);
+                    if !parsed.is_empty() {
+                        tags = Some(parsed);
+                    }
+                }
+                "categories" => {
+                    let parsed = parse_yaml_list(value);
+                    if !parsed.is_empty() {
+                        categories = Some(parsed);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    (title, date, tags, categories, body.to_string())
+}
+
+fn parse_yaml_list(value: &str) -> Vec<String> {
+    let value = value.trim();
+
+    // Inline list: [tag1, tag2]
+    if value.starts_with('[') && value.ends_with(']') {
+        let inner = &value[1..value.len() - 1];
+        return inner
+            .split(',')
+            .map(|s| s.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+    }
+
+    // Single value
+    if !value.is_empty() {
+        return vec![value.trim_matches(|c| c == '"' || c == '\'').to_string()];
+    }
+
+    Vec::new()
+}
+
+/// POST /api/v1/admin/blogs/import-markdown
+///
+/// Import a blog post from markdown content with YAML front matter
+pub async fn import_markdown(
+    State(state): State<AppState>,
+    AuthUser { .. }: AuthUser,
+    Json(req): Json<ImportMarkdownRequest>,
+) -> Result<Json<ApiResponse<BlogResponse>>, ApiError> {
+    if req.content.trim().is_empty() {
+        return Err(ApiError::ValidationError(
+            "Markdown content is required".to_string(),
+        ));
+    }
+
+    let (fm_title, _date, fm_tags, _categories, body) = parse_front_matter(&req.content);
+
+    let title = fm_title.ok_or_else(|| {
+        ApiError::ValidationError(
+            "No title found in front matter. Add 'title: ...' to the YAML header.".to_string(),
+        )
+    })?;
+
+    if body.trim().is_empty() {
+        return Err(ApiError::ValidationError(
+            "Markdown body is empty after parsing front matter".to_string(),
+        ));
+    }
+
+    let is_published = req
+        .status
+        .as_deref()
+        .map(|s| s == "published")
+        .unwrap_or(false);
+
+    // Resolve tag names to IDs (create tags if they don't exist)
+    let tag_ids = if let Some(ref tag_names) = fm_tags {
+        let mut ids = Vec::new();
+        for name in tag_names {
+            let tag = if let Some(existing) = TagRepository::find_by_name(&state.db, name).await? {
+                existing
+            } else {
+                TagRepository::create(&state.db, &crate::models::tag::CreateTagRequest {
+                    name: name.clone(),
+                })
+                .await?
+            };
+            ids.push(tag.id);
+        }
+        Some(ids)
+    } else {
+        None
+    };
+
+    let create_req = CreateBlogRequest {
+        title,
+        slug: None,
+        author: None,
+        content: body,
+        summary: None,
+        thumbnail: None,
+        category_id: req.category_id,
+        tag_ids,
+        is_published: Some(is_published),
+        references: None,
+    };
+
+    let html = render_markdown(&create_req.content);
+    let blog = BlogRepository::create(&state.db, &create_req, Some(html)).await?;
+
+    let blog_detail = BlogRepository::find_detail_by_id(&state.db, blog.id)
+        .await?
+        .ok_or_else(|| ApiError::InternalError("Failed to fetch created blog".to_string()))?;
+
+    if let Err(e) =
+        BlogService::invalidate_blog_cache(&state.cache, blog.id, blog.slug.as_deref()).await
+    {
+        tracing::warn!("Failed to invalidate blog cache: {}", e);
+    }
+
+    tracing::info!("Imported blog from markdown: {} (id: {})", blog.title, blog.id);
+
+    Ok(Json(ApiResponse::success(BlogResponse::from(blog_detail))))
 }

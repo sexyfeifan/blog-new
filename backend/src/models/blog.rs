@@ -122,6 +122,14 @@ impl BlogQueryParams {
     }
 }
 
+/// Import markdown request DTO
+#[derive(Debug, Deserialize)]
+pub struct ImportMarkdownRequest {
+    pub content: String,
+    pub category_id: Option<i64>,
+    pub status: Option<String>,
+}
+
 /// Blog response DTO
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlogResponse {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Copy, KeyRound, Loader2, RefreshCw } from "lucide-react";
+import { Copy, KeyRound, Loader2, RefreshCw, Save } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,7 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { mcpApi, type McpSettings } from "@/lib/api";
+import { mcpApi, accountApi, type McpSettings } from "@/lib/api";
+import type { UserResponse } from "@/types";
 
 interface SettingsTabProps {
     getValue: (key: string) => string;
@@ -597,5 +598,203 @@ export function McpConfigTab() {
                 )}
             </CardContent>
         </Card>
+    );
+}
+
+export function AccountTab() {
+    const [user, setUser] = useState<UserResponse | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSavingAccount, setIsSavingAccount] = useState(false);
+    const [isSavingPassword, setIsSavingPassword] = useState(false);
+
+    const [username, setUsername] = useState("");
+    const [nickname, setNickname] = useState("");
+    const [email, setEmail] = useState("");
+
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+
+    useEffect(() => {
+        const fetchUser = async () => {
+            setIsLoading(true);
+            try {
+                const stored = localStorage.getItem("user");
+                if (stored) {
+                    const u: UserResponse = JSON.parse(stored);
+                    setUser(u);
+                    setUsername(u.username || "");
+                    setNickname(u.nickname || "");
+                    setEmail(u.email || "");
+                }
+            } catch {
+                toast.error("无法加载用户信息");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchUser();
+    }, []);
+
+    const handleSaveAccount = async () => {
+        if (!username.trim()) {
+            toast.error("用户名不能为空");
+            return;
+        }
+        setIsSavingAccount(true);
+        try {
+            const updated = await accountApi.update({
+                username: username.trim(),
+                nickname: nickname.trim() || undefined,
+                email: email.trim() || undefined,
+            });
+            setUser(updated);
+            localStorage.setItem("user", JSON.stringify(updated));
+            toast.success("账号信息已更新");
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "更新失败");
+        } finally {
+            setIsSavingAccount(false);
+        }
+    };
+
+    const handleChangePassword = async () => {
+        if (!currentPassword) {
+            toast.error("请输入当前密码");
+            return;
+        }
+        if (newPassword.length < 6) {
+            toast.error("新密码至少 6 个字符");
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            toast.error("两次输入的密码不一致");
+            return;
+        }
+        setIsSavingPassword(true);
+        try {
+            await accountApi.changePassword({
+                current_password: currentPassword,
+                new_password: newPassword,
+            });
+            toast.success("密码已修改");
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmPassword("");
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "修改失败");
+        } finally {
+            setIsSavingPassword(false);
+        }
+    };
+
+    if (isLoading) {
+        return (
+            <Card>
+                <CardContent className="flex items-center justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle>账号信息</CardTitle>
+                    <CardDescription>修改用户名、昵称和邮箱</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="account-username">用户名</Label>
+                            <Input
+                                id="account-username"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                placeholder="用户名"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="account-nickname">昵称</Label>
+                            <Input
+                                id="account-nickname"
+                                value={nickname}
+                                onChange={(e) => setNickname(e.target.value)}
+                                placeholder="昵称（可选）"
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="account-email">邮箱</Label>
+                        <Input
+                            id="account-email"
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="邮箱（可选）"
+                        />
+                    </div>
+                    <Button onClick={handleSaveAccount} disabled={isSavingAccount}>
+                        {isSavingAccount ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <Save className="mr-2 h-4 w-4" />
+                        )}
+                        保存账号信息
+                    </Button>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>修改密码</CardTitle>
+                    <CardDescription>修改登录密码</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="current-password">当前密码</Label>
+                        <Input
+                            id="current-password"
+                            type="password"
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            placeholder="请输入当前密码"
+                        />
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="new-password">新密码</Label>
+                            <Input
+                                id="new-password"
+                                type="password"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="至少 6 个字符"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="confirm-password">确认新密码</Label>
+                            <Input
+                                id="confirm-password"
+                                type="password"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                placeholder="再次输入新密码"
+                            />
+                        </div>
+                    </div>
+                    <Button onClick={handleChangePassword} disabled={isSavingPassword}>
+                        {isSavingPassword ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <KeyRound className="mr-2 h-4 w-4" />
+                        )}
+                        修改密码
+                    </Button>
+                </CardContent>
+            </Card>
+        </div>
     );
 }
