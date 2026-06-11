@@ -7,7 +7,7 @@
 ```
 ┌─────────────────────────────────────────────┐
 │  Nginx (反向代理)                              │
-│  :80 → 前端 :3000 + 后端 :8088               │
+│  :80 → 前端 :3000 + 后端 :3901               │
 ├──────────────────────┬──────────────────────┤
 │  Next.js 前端         │  Rust 后端 API        │
 │  sexyfeifan/          │  sexyfeifan/          │
@@ -58,7 +58,7 @@ RUSTFS_SECRET_KEY=你的RustFS密码
 RUSTFS_ACCESS_KEY=你的RustFS用户名
 
 # 前端 API 地址（部署后改为你的服务器地址）
-NEXT_PUBLIC_API_URL=http://你的服务器IP:8088/api/v1
+NEXT_PUBLIC_API_URL=http://你的服务器IP:3901/api/v1
 ```
 
 生成随机密钥：
@@ -77,8 +77,8 @@ docker compose up -d
 ```
 
 等待 1-2 分钟，访问：
-- 博客首页：`http://你的服务器IP`
-- 后台管理：`http://你的服务器IP/admin`
+- 博客首页：`http://你的服务器IP:3900`
+- 后台管理：`http://你的服务器IP:3900/admin`
 
 ### 4. 创建管理员
 
@@ -194,8 +194,8 @@ docker compose logs -f
 
 #### 6. 访问
 
-- 博客：`http://你的NAS-IP`
-- 后台：`http://你的NAS-IP/admin`
+- 博客：`http://你的NAS-IP:3900`
+- 后台：`http://你的NAS-IP:3900/admin`
 
 ### 方式二：Container Manager 图形界面
 
@@ -207,7 +207,7 @@ docker compose logs -f
 
 ### 群晖注意事项
 
-- 确保端口 80、8088、5432 未被占用
+- 确保端口 80、3901、5432 未被占用
 - 数据卷默认在项目目录下，建议放在 `/volume1/docker/`
 - 群晖重启后 Docker 容器会自动启动
 - 如需外网访问，在群晖路由器设置中做端口转发，或使用群晖自带的 DDNS
@@ -354,9 +354,9 @@ cat backup_20260611.sql | docker exec -i blog-postgres psql -U bloguser blog
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| 80 | Nginx | 博客首页 |
+| 3900 | Nginx | 博客首页 |
 | 3000 | Next.js | 前端（内部） |
-| 8088 | Rust API | 后端 API |
+| 3901 | Rust API | 后端 API |
 | 5432 | PostgreSQL | 数据库 |
 | 6379 | Redis | 缓存 |
 | 9000 | RustFS API | 文件存储 |
@@ -373,7 +373,7 @@ docker compose logs postgres | tail -20
 
 # 端口被占用
 lsof -i :80
-lsof -i :8088
+lsof -i :3901
 
 # 重置所有数据
 docker compose down -v
