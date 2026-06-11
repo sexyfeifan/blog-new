@@ -77,7 +77,7 @@ services:
           memory: 256M
 
   backend:
-    image: blog-backend:latest
+    image: sexyfeifan/blog-backend:latest
     build:
       extra_hosts:
         - "host.docker.internal:host-gateway"
@@ -126,7 +126,7 @@ services:
           memory: 64M
 
   frontend:
-    image: blog-frontend:latest
+    image: sexyfeifan/blog-frontend:latest
     build:
       extra_hosts:
         - "host.docker.internal:host-gateway"

@@ -62,7 +62,7 @@ services:
 
   # Rust Backend API
   backend:
-    image: ${BACKEND_IMAGE:-blog-backend:latest}
+    image: sexyfeifan/blog-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -97,7 +97,7 @@ services:
 
   # Next.js Frontend
   frontend:
-    image: ${FRONTEND_IMAGE:-blog-frontend:latest}
+    image: sexyfeifan/blog-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile

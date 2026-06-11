@@ -1,306 +1,285 @@
-# 博客系统 Docker 部署指南（无 Nginx 版本）
+# 🏝️ sexyfeifan 的博客系统部署指南
 
-## 快速开始
+基于 [mdddj/blog-new](https://github.com/mdddj/blog-new) 的全栈博客系统，使用 Docker 一键部署。
 
-### 1. 准备环境
+## 架构
 
-确保已安装：
-- Docker 20.10+
-- Docker Compose 2.0+
+```
+┌─────────────────────────────────────────────┐
+│  Nginx (反向代理)                              │
+│  :80 → 前端 :3000 + 后端 :8088               │
+├──────────────────────┬──────────────────────┤
+│  Next.js 前端         │  Rust 后端 API        │
+│  sexyfeifan/          │  sexyfeifan/          │
+│  blog-frontend        │  blog-backend         │
+├──────────────────────┼──────────────────────┤
+│  PostgreSQL           │  Redis                │
+│  (数据库)              │  (缓存)               │
+├──────────────────────┴──────────────────────┤
+│  RustFS (S3 兼容文件存储)                      │
+└─────────────────────────────────────────────┘
+```
+
+## 前置要求
+
+- Docker 20.10+ 和 Docker Compose v2
+- 至少 2GB 内存
+- 一个域名（可选，可用 IP 直接访问）
+
+## 快速部署（3 步）
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/sexyfeifan/blog-new.git
+cd blog-new
+```
 
 ### 2. 配置环境变量
 
 ```bash
-# 复制环境变量模板
-cp .env.production .env
-
-# 编辑配置文件
-vim .env
+cp .env.example .env
 ```
 
-**必须修改的配置项：**
+编辑 `.env` 文件，**必须修改以下项**：
 
 ```bash
-# 数据库密码
-POSTGRES_PASSWORD=your-secure-password-here
+# 数据库密码（必须修改！）
+POSTGRES_PASSWORD=你的安全密码
 
-# JWT 密钥（至少 32 字符）
-JWT_SECRET=your-super-secret-jwt-key-at-least-32-characters
+# JWT 密钥（必须修改！生成随机字符串）
+JWT_SECRET=你的JWT密钥至少32位随机字符串
 
-# RustFS 密钥
-RUSTFS_SECRET_KEY=your-secure-rustfs-secret-key
+# RustFS 密码（必须修改！）
+RUSTFS_SECRET_KEY=你的RustFS密码
+RUSTFS_ACCESS_KEY=你的RustFS用户名
+
+# 前端 API 地址（部署后改为你的服务器地址）
+NEXT_PUBLIC_API_URL=http://你的服务器IP:8088/api/v1
 ```
 
-**注意**：前端会自动通过浏览器访问后端的 8080 端口，无需额外配置 API 地址。
+生成随机密钥：
+```bash
+# macOS
+openssl rand -base64 32
+
+# Linux
+head -c 32 /dev/urandom | base64
+```
 
 ### 3. 启动服务
 
 ```bash
-# 使用 docker compose 启动
-docker compose -f docker-compose.prod.yml up -d
-
-# 查看服务状态
-docker compose -f docker-compose.prod.yml ps
-
-# 查看日志
-docker compose -f docker-compose.prod.yml logs -f
+docker compose up -d
 ```
 
-### 4. 访问服务
+等待所有服务启动（约 1-2 分钟），然后访问：
+- 博客首页：`http://你的服务器IP`
+- 后台管理：`http://你的服务器IP/admin`
+- API 文档：`http://你的服务器IP:8088/api/v1`
 
-数据库迁移会在后端启动时自动执行，无需手动操作。
+## 默认账号
 
-- **博客首页**: http://your-server-ip:3000
-- **后端 API**: http://your-server-ip:8080/api/v1
-- **RustFS 控制台**: http://your-server-ip:9101
-
-### 5. 验证部署
-
-检查所有服务是否正常运行：
+首次启动后，需要创建管理员账号：
 
 ```bash
-# 查看服务状态（所有服务应该是 healthy）
-docker compose -f docker-compose.prod.yml ps
+# 进入后端容器
+docker exec -it blog-backend ./blog-backend create-admin
 
-# 测试后端 API
-curl http://localhost:8080/api/v1/config
-
-# 测试前端页面
-curl http://localhost:3000
-
-# 查看日志
-docker compose -f docker-compose.prod.yml logs -f
+# 按提示输入用户名和密码
 ```
-
-如果一切正常，你应该能在浏览器中访问博客首页并看到完整的界面。
-
-## 架构说明
-
-本部署方案不使用 Nginx，前后端直接暴露端口：
-
-```
-                    客户端浏览器
-                         │
-            ┌────────────┴────────────┐
-            │                         │
-            ▼                         ▼
-    ┌─────────────┐          ┌─────────────┐
-    │  Frontend   │          │   Backend   │
-    │  (Next.js)  │◄────────►│   (Rust)    │
-    │   :3000     │  SSR     │   :8080     │
-    └─────────────┘          └─────────────┘
-            │                         │
-            │         ┌───────────────┼────────────────┐
-            │         ▼               ▼                ▼
-            │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-            └─▶│  PostgreSQL │  │    Redis    │  │   RustFS    │
-               │  (数据库)    │  │   (缓存)    │  │  (文件存储)  │
-               └─────────────┘  └─────────────┘  └─────────────┘
-```
-
-**工作原理：**
-- 前端 SSR（服务端渲染）通过 Docker 内部网络访问后端（INTERNAL_API_URL）
-- 客户端浏览器通过公网 IP 的 8080 端口直接访问后端 API
-- 前端通过环境变量 `NEXT_PUBLIC_API_URL` 配置客户端 API 地址（默认 localhost:8080）
-
-## 端口说明
-
-| 服务 | 内部端口 | 外部端口 | 说明 |
-|------|---------|---------|------|
-| Frontend | 3000 | 3000 | Next.js 前端 |
-| Backend | 8080 | 8080 | Rust API 服务 |
-| PostgreSQL | 5432 | 5432 | 数据库 |
-| RustFS API | 9000 | 9100 | 文件存储 API |
-| RustFS Console | 9001 | 9101 | 文件存储控制台 |
-| Redis | 6379 | - | 缓存（内部） |
 
 ## 常用命令
 
 ```bash
-# 查看服务状态
-docker compose -f docker-compose.prod.yml ps
+# 查看所有服务状态
+docker compose ps
 
 # 查看日志
-docker compose -f docker-compose.prod.yml logs -f
-docker compose -f docker-compose.prod.yml logs backend -f
-docker compose -f docker-compose.prod.yml logs frontend -f
+docker compose logs -f           # 所有服务
+docker compose logs -f backend   # 只看后端
+docker compose logs -f frontend  # 只看前端
 
-# 重启服务
-docker compose -f docker-compose.prod.yml restart
+# 重启所有服务
+docker compose restart
 
-# 停止服务
-docker compose -f docker-compose.prod.yml down
+# 重启单个服务
+docker compose restart backend
 
-# 清理所有数据（危险！）
-docker compose -f docker-compose.prod.yml down -v
+# 停止所有服务
+docker compose down
+
+# 停止并删除数据（危险！）
+docker compose down -v
+
+# 更新镜像并重启
+docker compose pull
+docker compose up -d
+
+# 重新构建镜像
+docker compose build --no-cache
+docker compose up -d
 ```
 
-## 生产环境配置
+## 使用自己的 Docker Hub 镜像
 
-### 使用域名和 HTTPS
+如果你想使用自己构建的镜像（方便定制）：
 
-如果你有域名，建议配置 HTTPS。有两种方案：
+```bash
+# 1. 登录 Docker Hub
+docker login
 
-#### 方案 1：使用 Caddy（推荐，自动 HTTPS）
+# 2. 构建镜像
+docker build -t sexyfeifan/blog-backend:latest ./backend
+docker build -t sexyfeifan/blog-frontend:latest ./frontend
 
-创建 `Caddyfile`：
+# 3. 推送到 Docker Hub
+docker push sexyfeifan/blog-backend:latest
+docker push sexyfeifan/blog-frontend:latest
 
-```caddy
-yourdomain.com {
-    reverse_proxy frontend:3000
+# 4. 在服务器上拉取并启动
+docker compose pull
+docker compose up -d
+```
+
+## 部署到 NAS（Synology/QNAP）
+
+### Synology DSM 7
+
+1. 安装 Container Manager（Docker 套件）
+2. 将项目文件夹上传到 NAS
+3. SSH 进入 NAS：
+   ```bash
+   cd /volume1/docker/blog-new
+   cp .env.example .env
+   # 编辑 .env
+   docker compose up -d
+   ```
+4. 在 Container Manager 中可以看到所有容器
+
+### QNAP Container Station
+
+1. 打开 Container Station
+2. 创建 → 应用 → 从 docker-compose.yml 创建
+3. 上传 docker-compose.yml 和 .env
+4. 启动
+
+## 部署到云服务器
+
+### Ubuntu/Debian
+
+```bash
+# 1. 安装 Docker
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+# 重新登录
+
+# 2. 克隆项目
+git clone https://github.com/sexyfeifan/blog-new.git
+cd blog-new
+
+# 3. 配置
+cp .env.example .env
+nano .env  # 编辑配置
+
+# 4. 启动
+docker compose up -d
+
+# 5. 配置 Nginx 反向代理（可选，用于域名访问）
+# 编辑 nginx.conf 或使用 Caddy/Traefik
+```
+
+### 配置域名 + HTTPS
+
+推荐使用 Caddy 自动 HTTPS：
+
+```bash
+# 安装 Caddy
+sudo apt install caddy
+
+# 编辑 /etc/caddy/Caddyfile
+blog.yourdomain.com {
+    reverse_proxy localhost:80
 }
-
-api.yourdomain.com {
-    reverse_proxy backend:8080
-}
 ```
 
-修改 `.env`：
-```bash
-NEXT_PUBLIC_API_URL=https://api.yourdomain.com/api/v1
-```
-
-#### 方案 2：使用 Nginx + Let's Encrypt
-
-参考原 `nginx.conf` 配置，添加 SSL 证书。
-
-### 防火墙配置
-
-确保开放以下端口：
-```bash
-# Ubuntu/Debian
-sudo ufw allow 3000/tcp
-sudo ufw allow 8080/tcp
-
-# CentOS/RHEL
-sudo firewall-cmd --permanent --add-port=3000/tcp
-sudo firewall-cmd --permanent --add-port=8080/tcp
-sudo firewall-cmd --reload
-```
-
-### 性能优化
-
-修改 `.env` 文件：
-
-```bash
-# 数据库连接池
-DATABASE_MAX_CONNECTIONS=50
-DATABASE_MIN_CONNECTIONS=5
-
-# 日志级别（生产环境建议 warn）
-RUST_LOG=warn
-```
+或者修改 `nginx.conf` 添加 SSL 配置。
 
 ## 数据备份
 
-### 备份数据库
-
 ```bash
-# 备份
-docker compose -f docker-compose.prod.yml exec postgres \
-  pg_dump -U bloguser blog > backup_$(date +%Y%m%d).sql
+# 备份数据库
+docker exec blog-postgres pg_dump -U bloguser blog > backup_$(date +%Y%m%d).sql
 
-# 恢复
-docker compose -f docker-compose.prod.yml exec -T postgres \
-  psql -U bloguser blog < backup_20241216.sql
+# 备份文件存储
+docker run --rm -v blog-new_rustfs_data:/data -v $(pwd):/backup alpine tar czf /backup/rustfs_$(date +%Y%m%d).tar.gz /data
+
+# 恢复数据库
+cat backup_20260611.sql | docker exec -i blog-postgres psql -U bloguser blog
 ```
 
-### 备份文件存储
+## 更新博客系统
 
 ```bash
-# 备份 RustFS 数据
-docker run --rm \
-  -v blog_rustfs_data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/rustfs_backup_$(date +%Y%m%d).tar.gz /data
+# 拉取最新代码
+git pull
+
+# 如果有新的 Docker 镜像
+docker compose pull
+docker compose up -d
+
+# 如果需要重新构建
+docker compose build --no-cache
+docker compose up -d
 ```
+
+## 端口说明
+
+| 端口 | 服务 | 说明 |
+|------|------|------|
+| 80 | Nginx | 博客首页（可通过 HTTP_PORT 修改） |
+| 3000 | Next.js | 前端（内部） |
+| 8088 | Rust API | 后端 API |
+| 5432 | PostgreSQL | 数据库 |
+| 6379 | Redis | 缓存 |
+| 9000 | RustFS API | 文件存储 API |
+| 9001 | RustFS Console | 文件存储管理面板 |
 
 ## 故障排查
 
-### 1. API 404 错误
-
-**症状**：前端显示 "Failed to load resource: 404"
-
-**原因**：后端服务未启动或端口未正确暴露
-
-**解决**：
 ```bash
-# 检查后端服务状态
-docker compose -f docker-compose.prod.yml ps backend
+# 服务无法启动
+docker compose logs backend | tail -20
 
-# 测试后端 API
-curl http://localhost:8080/api/v1/config
+# 数据库连接失败
+docker compose logs postgres | tail -20
 
-# 查看后端日志
-docker compose -f docker-compose.prod.yml logs backend -f
+# 前端白屏
+docker compose logs frontend | tail -20
 
-# 确保防火墙开放 8080 端口
-sudo ufw allow 8080/tcp  # Ubuntu/Debian
+# 端口被占用
+lsof -i :80
+lsof -i :8088
+
+# 重置所有数据
+docker compose down -v
+docker compose up -d
 ```
 
-### 2. CORS 错误
+## 项目结构
 
-**症状**：浏览器控制台显示跨域错误
-
-**解决**：检查后端是否正确配置了 CORS，查看 `backend/src/main.rs`
-
-### 3. 数据库连接失败
-
-```bash
-# 检查数据库状态
-docker compose -f docker-compose.prod.yml exec postgres \
-  pg_isready -U bloguser -d blog
-
-# 查看后端日志
-docker compose -f docker-compose.prod.yml logs backend
 ```
-
-### 4. 文件上传失败
-
-```bash
-# 检查 RustFS 状态
-curl http://localhost:9100/
-
-# 查看 RustFS 日志
-docker compose -f docker-compose.prod.yml logs rustfs
+blog-new/
+├── backend/              ← Rust 后端
+│   ├── src/              ← 源代码
+│   ├── migrations/       ← 数据库迁移
+│   └── Dockerfile
+├── frontend/             ← Next.js 前端
+│   ├── src/              ← 源代码
+│   └── Dockerfile
+├── docker-compose.yml    ← 开发环境
+├── docker-compose.prod.yml ← 生产环境
+├── .env.example          ← 环境变量模板
+├── deploy.sh             ← 部署脚本
+└── DEPLOY.md             ← 本文件
 ```
-
-## 环境变量说明
-
-| 变量名 | 说明 | 默认值 | 必填 |
-|--------|------|--------|------|
-| `POSTGRES_PASSWORD` | 数据库密码 | - | ✅ |
-| `JWT_SECRET` | JWT 签名密钥 | - | ✅ |
-| `RUSTFS_SECRET_KEY` | RustFS 密钥 | - | ✅ |
-| `POSTGRES_DB` | 数据库名 | blog | ❌ |
-| `POSTGRES_USER` | 数据库用户 | bloguser | ❌ |
-| `FRONTEND_PORT` | 前端端口 | 3000 | ❌ |
-| `BACKEND_PORT` | 后端端口 | 8080 | ❌ |
-| `DATABASE_MAX_CONNECTIONS` | 最大连接数 | 25 | ❌ |
-| `RUST_LOG` | 日志级别 | warn | ❌ |
-
-**注意**：
-- `NEXT_PUBLIC_API_URL` 已不再需要，前端会自动使用 `http://localhost:8080/api/v1`
-- 如果你的服务器 IP 不是 localhost，客户端需要通过浏览器访问 `http://your-server-ip:8080`
-- 前端 SSR 通过 Docker 内部网络的 `INTERNAL_API_URL` 访问后端
-
-## 发布到 Docker Hub
-
-```bash
-# 1. 登录
-docker login
-
-# 2. 构建并推送
-./build-and-push.sh
-```
-
-其他用户可以直接使用你发布的镜像部署，无需本地构建。
-
-## 从 Nginx 版本迁移
-
-如果你之前使用了 Nginx 版本，迁移步骤：
-
-1. 停止旧服务：`docker compose down`
-2. 修改 `.env` 添加 `NEXT_PUBLIC_API_URL`
-3. 使用新配置启动：`docker compose -f docker-compose.prod.yml up -d`
-4. 删除 nginx 容器和配置（可选）
