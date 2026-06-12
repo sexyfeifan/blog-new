@@ -89,6 +89,7 @@ const NAV_LINKS = [
   { href: "/docs", label: "文档", icon: "icon-critterpedia" as const },
   { href: "/projects", label: "项目", icon: "icon-shopping" as const },
   { href: "/friends", label: "友链", icon: "icon-chat" as const },
+  { href: "/drafts", label: "草稿", icon: "icon-design" as const },
 ];
 
 export function PublicCard({

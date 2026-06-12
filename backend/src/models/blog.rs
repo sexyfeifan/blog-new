@@ -122,6 +122,24 @@ impl BlogQueryParams {
     }
 }
 
+/// Drafts query parameters
+#[derive(Debug, Deserialize)]
+pub struct DraftsQuery {
+    pub key: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+impl DraftsQuery {
+    pub fn page(&self) -> i64 {
+        self.page.unwrap_or(1).max(1)
+    }
+
+    pub fn page_size(&self) -> i64 {
+        self.page_size.unwrap_or(10).clamp(1, 100)
+    }
+}
+
 /// Import markdown request DTO
 #[derive(Debug, Deserialize)]
 pub struct ImportMarkdownRequest {

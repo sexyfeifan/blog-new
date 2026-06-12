@@ -458,4 +458,13 @@ impl BlogRepository {
     ) -> Result<(Vec<BlogListItem>, i64), ApiError> {
         Self::find_with_filters(pool, page, page_size, Some(category_id), None, Some(true)).await
     }
+
+    /// Find all draft (unpublished) blogs with pagination
+    pub async fn list_drafts(
+        pool: &PgPool,
+        page: i64,
+        page_size: i64,
+    ) -> Result<(Vec<BlogListItem>, i64), ApiError> {
+        Self::find_with_filters(pool, page, page_size, None, None, Some(false)).await
+    }
 }

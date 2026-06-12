@@ -11,7 +11,7 @@ use crate::error::{ApiError, ApiResponse, PaginatedData};
 use crate::middleware::auth::AuthUser;
 use crate::models::blog::{
     BlogDetail, BlogListItem, BlogQueryParams, BlogResponse, CreateBlogRequest,
-    ImportMarkdownRequest, UpdateBlogRequest,
+    DraftsQuery, ImportMarkdownRequest, UpdateBlogRequest,
 };
 use crate::repositories::blog_repo::BlogRepository;
 use crate::repositories::tag_repo::TagRepository;
@@ -102,6 +102,40 @@ pub async fn list_blogs(
         page,
         total
     );
+
+    Ok(Json(ApiResponse::success(paginated)))
+}
+
+/// GET /api/v1/blogs/drafts?key=xxx
+///
+/// List draft blogs, protected by a simple query key
+pub async fn list_drafts(
+    State(state): State<AppState>,
+    Query(params): Query<DraftsQuery>,
+) -> Result<Json<ApiResponse<PaginatedData<BlogListItem>>>, ApiError> {
+    let configured_key = state.config.drafts_access_key.as_deref();
+    match configured_key {
+        None => {
+            return Err(ApiError::Forbidden(
+                "Drafts access is not configured".to_string(),
+            ));
+        }
+        Some(expected) => {
+            let provided = params
+                .key
+                .as_deref()
+                .ok_or_else(|| ApiError::Unauthorized("Missing drafts key".to_string()))?;
+            if provided != expected {
+                return Err(ApiError::Unauthorized("Invalid drafts key".to_string()));
+            }
+        }
+    }
+
+    let page = params.page();
+    let page_size = params.page_size();
+
+    let (blogs, total) = BlogRepository::list_drafts(&state.db, page, page_size).await?;
+    let paginated = PaginatedData::new(blogs, total, page, page_size);
 
     Ok(Json(ApiResponse::success(paginated)))
 }

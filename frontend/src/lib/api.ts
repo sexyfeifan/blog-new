@@ -174,6 +174,11 @@ export const blogApi = {
       { next: { revalidate: 60 } },
     ),
 
+  listDrafts: (key: string, page = 1, pageSize = 10) =>
+    request<PaginatedResponse<Blog>>(
+      `/blogs/drafts?key=${encodeURIComponent(key)}&page=${page}&page_size=${pageSize}`,
+    ),
+
   getById: (id: number) => request<Blog>(`/blogs/${id}`),
 
   getBySlug: (slug: string) => request<Blog>(`/blogs/slug/${slug}`),

@@ -13,6 +13,7 @@ pub struct Config {
     pub redis: RedisConfig,
     pub jwt: JwtConfig,
     pub s3: S3Config,
+    pub drafts_access_key: Option<String>,
 }
 
 /// Server configuration
@@ -139,6 +140,7 @@ impl Config {
                 secret_key: env::var("S3_SECRET_KEY").unwrap_or_else(|_| "minioadmin".to_string()),
                 public_url: env::var("S3_PUBLIC_URL").unwrap_or_default(),
             },
+            drafts_access_key: env::var("DRAFTS_ACCESS_KEY").ok(),
         })
     }
 }
