@@ -69,6 +69,8 @@ export default function BlogListPage() {
     const [importCategoryId, setImportCategoryId] = useState<string>("none");
     const [importStatus, setImportStatus] = useState("draft");
     const [isImporting, setIsImporting] = useState(false);
+    const [importQueue, setImportQueue] = useState<{name: string; content: string}[]>([]);
+    const [importProgress, setImportProgress] = useState({done: 0, total: 0});
     const [categories, setCategories] = useState<Category[]>([]);
     const pageSize = 10;
 
@@ -163,6 +165,38 @@ export default function BlogListPage() {
     };
 
     const handleImportMarkdown = async () => {
+        // 批量导入模式
+        if (importQueue.length > 0) {
+            setIsImporting(true);
+            setImportProgress({done: 0, total: importQueue.length});
+            let success = 0;
+            let failed = 0;
+            for (let i = 0; i < importQueue.length; i++) {
+                try {
+                    await blogApi.importMarkdown({
+                        content: importQueue[i].content,
+                        category_id: importCategoryId && importCategoryId !== "none" ? parseInt(importCategoryId) : undefined,
+                        status: importStatus,
+                    });
+                    success++;
+                } catch {
+                    failed++;
+                }
+                setImportProgress({done: i + 1, total: importQueue.length});
+            }
+            setIsImporting(false);
+            if (failed > 0) {
+                toast.warning(`导入完成：${success} 成功，${failed} 失败`);
+            } else {
+                toast.success(`全部导入成功：${success} 篇文章`);
+            }
+            setImportQueue([]);
+            setImportContent("");
+            setImportDialogOpen(false);
+            fetchBlogs(currentPage);
+            return;
+        }
+        // 单篇导入模式
         if (!importContent.trim()) {
             toast.error("请输入 Markdown 内容");
             return;
@@ -186,21 +220,50 @@ export default function BlogListPage() {
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        if (!file.name.endsWith(".md") && !file.name.endsWith(".markdown")) {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        const validFiles = Array.from(files).filter(
+            f => f.name.endsWith(".md") || f.name.endsWith(".markdown")
+        );
+        if (validFiles.length === 0) {
             toast.error("请选择 .md 或 .markdown 文件");
             return;
         }
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const text = ev.target?.result;
-            if (typeof text === "string") {
-                setImportContent(text);
-                toast.success(`已加载文件: ${file.name}`);
+
+        if (validFiles.length === 1) {
+            // 单文件：直接加载到编辑区
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const text = ev.target?.result;
+                if (typeof text === "string") {
+                    setImportContent(text);
+                    setImportQueue([]);
+                    toast.success(`已加载文件: ${validFiles[0].name}`);
+                }
+            };
+            reader.readAsText(validFiles[0]);
+        } else {
+            // 多文件：加入队列
+            const queue: {name: string; content: string}[] = [];
+            let loaded = 0;
+            for (const file of validFiles) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const text = ev.target?.result;
+                    if (typeof text === "string") {
+                        queue.push({name: file.name, content: text});
+                    }
+                    loaded++;
+                    if (loaded === validFiles.length) {
+                        setImportQueue(queue);
+                        setImportContent("");
+                        toast.success(`已加载 ${queue.length} 个文件，点击导入开始批量处理`);
+                    }
+                };
+                reader.readAsText(file);
             }
-        };
-        reader.readAsText(file);
+        }
         e.target.value = "";
     };
 
@@ -511,62 +574,106 @@ export default function BlogListPage() {
             </Dialog>
 
             <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>导入 Markdown 文章</DialogTitle>
                         <DialogDescription>
-                            粘贴带 YAML front matter 的 Markdown 内容，或上传 .md 文件
+                            支持单文件或批量导入，文件需包含 YAML front matter
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
+                    <div className="space-y-4 py-4 overflow-y-auto flex-1 min-h-0">
                         <div className="flex items-center gap-2">
                             <Button variant="outline" size="sm" asChild>
                                 <label className="cursor-pointer">
                                     <Upload className="mr-2 h-4 w-4" />
-                                    上传 .md 文件
+                                    选择文件（支持多选）
                                     <input
                                         type="file"
                                         accept=".md,.markdown"
+                                        multiple
                                         className="hidden"
                                         onChange={handleFileUpload}
                                     />
                                 </label>
                             </Button>
-                            {importContent && (
+                            {importQueue.length > 0 && (
+                                <span className="text-sm text-green-600 font-medium">
+                                    已加载 {importQueue.length} 个文件
+                                </span>
+                            )}
+                            {importContent && !importQueue.length && (
                                 <span className="text-sm text-muted-foreground">
                                     已加载 {importContent.length} 字符
                                 </span>
                             )}
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="import-content">Markdown 内容</Label>
-                            <Textarea
-                                id="import-content"
-                                value={importContent}
-                                onChange={(e) => setImportContent(e.target.value)}
-                                placeholder={`---
+
+                        {/* 批量队列预览 */}
+                        {importQueue.length > 0 && (
+                            <div className="rounded-lg border p-3 space-y-1 text-sm max-h-32 overflow-y-auto">
+                                <p className="font-medium">待导入文件：</p>
+                                {importQueue.map((f, i) => (
+                                    <p key={i} className="text-muted-foreground">
+                                        {i + 1}. {f.name} ({f.content.length} 字符)
+                                    </p>
+                                ))}
+                                <Button variant="ghost" size="sm" onClick={() => setImportQueue([])}>
+                                    清空队列
+                                </Button>
+                            </div>
+                        )}
+
+                        {/* 导入进度 */}
+                        {isImporting && importProgress.total > 0 && (
+                            <div className="rounded-lg border p-3 text-sm">
+                                <div className="flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <span>导入中：{importProgress.done} / {importProgress.total}</span>
+                                </div>
+                                <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-primary transition-all"
+                                        style={{width: `${(importProgress.done / importProgress.total) * 100}%`}}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 单文件编辑区 */}
+                        {importQueue.length === 0 && (
+                            <>
+                                <div className="space-y-2">
+                                    <Label htmlFor="import-content">Markdown 内容</Label>
+                                    <Textarea
+                                        id="import-content"
+                                        value={importContent}
+                                        onChange={(e) => setImportContent(e.target.value)}
+                                        placeholder={`---
 title: "文章标题"
-date: 2024-01-01
+date: 2026-01-01
 tags: [tag1, tag2]
 ---
 
 文章正文内容...`}
-                                rows={12}
-                                className="font-mono text-sm"
-                            />
-                        </div>
-                        {(() => {
-                            const preview = parseImportPreview();
-                            if (!preview) return null;
-                            return (
-                                <div className="rounded-lg border p-3 space-y-1 text-sm">
-                                    <p><strong>预览：</strong></p>
-                                    {preview.title && <p>标题：{preview.title}</p>}
-                                    {preview.date && <p>日期：{preview.date}</p>}
-                                    {preview.tags && <p>标签：{preview.tags}</p>}
+                                        rows={8}
+                                        className="font-mono text-sm"
+                                    />
                                 </div>
-                            );
-                        })()}
+                                {(() => {
+                                    const preview = parseImportPreview();
+                                    if (!preview) return null;
+                                    return (
+                                        <div className="rounded-lg border p-3 space-y-1 text-sm">
+                                            <p><strong>预览：</strong></p>
+                                            {preview.title && <p>标题：{preview.title}</p>}
+                                            {preview.date && <p>日期：{preview.date}</p>}
+                                            {preview.tags && <p>标签：{preview.tags}</p>}
+                                        </div>
+                                    );
+                                })()}
+                            </>
+                        )}
+
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
                                 <Label htmlFor="import-category">分类</Label>
@@ -599,16 +706,19 @@ tags: [tag1, tag2]
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                        <Button variant="outline" onClick={() => {setImportDialogOpen(false); setImportQueue([]); setImportContent("");}}>
                             取消
                         </Button>
-                        <Button onClick={handleImportMarkdown} disabled={isImporting || !importContent.trim()}>
+                        <Button
+                            onClick={handleImportMarkdown}
+                            disabled={isImporting || (!importContent.trim() && importQueue.length === 0)}
+                        >
                             {isImporting ? (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             ) : (
                                 <Upload className="mr-2 h-4 w-4" />
                             )}
-                            导入
+                            {importQueue.length > 0 ? `导入 ${importQueue.length} 篇` : '导入'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
