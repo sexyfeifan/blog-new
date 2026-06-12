@@ -186,3 +186,55 @@ docker run --rm -v blog-new_rustfs_data:/data -v $(pwd):/backup alpine \
 | 群晖 DSM 7 | SSH 登录后操作，Container Manager 图形界面也可 |
 | 飞牛 fnOS | 数据卷路径 `/vol1/docker/`，自带 Docker |
 | 云服务器 | 配置域名 + Caddy 自动 HTTPS |
+
+## 修改管理员账号密码
+
+后台面板的修改密码功能可能因 token 失效导致登录失败。推荐使用 API 方式修改。
+
+### 修改密码
+
+```bash
+# 1. 登录获取 token
+TOKEN=$(curl -s -X POST http://localhost:3901/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"当前用户名","password":"当前密码"}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['access_token'])")
+
+# 2. 修改密码
+curl -X PUT http://localhost:3901/api/v1/admin/account/password \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"current_password":"当前密码","new_password":"新密码"}'
+```
+
+### 修改用户名
+
+```bash
+# 1. 登录获取 token（用当前密码）
+TOKEN=$(curl -s -X POST http://localhost:3901/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"当前用户名","password":"当前密码"}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['access_token'])")
+
+# 2. 修改用户名
+curl -X PUT http://localhost:3901/api/v1/admin/account \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"username":"新用户名","nickname":"显示名"}'
+```
+
+### 同时修改用户名和密码
+
+```bash
+# 1. 删除旧用户
+docker exec blog-postgres psql -U bloguser -d blog \
+  -c "DELETE FROM users WHERE username = '当前用户名';"
+
+# 2. 重新创建
+curl -X POST http://localhost:3901/api/v1/auth/setup \
+  -H "Content-Type: application/json" \
+  -d '{"username":"新用户名","password":"新密码","nickname":"显示名"}'
+```
+
+> **注意：** `auth/setup` 只能在没有管理员时使用，所以必须先删除旧用户。
+> 修改用户名后需要重新登录获取新 token。
