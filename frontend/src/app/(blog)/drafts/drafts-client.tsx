@@ -213,7 +213,10 @@ function DraftPostCard({ blog }: { blog: Blog }) {
   const router = useRouter();
 
   return (
-    <div className="relative">
+    <div
+      className="relative cursor-pointer"
+      onClick={() => router.push(`/drafts/${blog.id}`)}
+    >
       <div className="absolute top-3 right-3 z-10">
         <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 border border-amber-300 px-2 py-0.5 text-[10px] font-extrabold text-amber-700">
           草稿

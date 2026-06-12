@@ -691,3 +691,37 @@ pub async fn import_markdown(
 
     Ok(Json(ApiResponse::success(BlogResponse::from(blog_detail))))
 }
+
+/// GET /api/v1/blogs/drafts/{id}?key=xxx
+///
+/// Get a single draft blog by ID (requires drafts key)
+pub async fn get_draft(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Query(params): Query<DraftsQuery>,
+) -> Result<Json<ApiResponse<BlogResponse>>, ApiError> {
+    let config = &state.config;
+    let expected_key = match &config.drafts_access_key {
+        Some(key) => key,
+        None => {
+            return Err(ApiError::Forbidden(
+                "Drafts access is not configured".to_string(),
+            ));
+        }
+    };
+
+    let provided = params
+        .key
+        .as_deref()
+        .ok_or_else(|| ApiError::Unauthorized("Missing drafts key".to_string()))?;
+    if provided != expected_key {
+        return Err(ApiError::Unauthorized("Invalid drafts key".to_string()));
+    }
+
+    let blog = BlogRepository::find_detail_by_id(&state.db, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("Blog with id {} not found", id)))?;
+
+    let response = BlogResponse::from(blog);
+    Ok(Json(ApiResponse::success(response)))
+}

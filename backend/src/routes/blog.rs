@@ -13,6 +13,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/blogs", get(blog::list_blogs))
         .route("/blogs/drafts", get(blog::list_drafts))
+        .route("/blogs/drafts/{id}", get(blog::get_draft))
         .route("/blogs/{id}", get(blog::get_blog))
         .route("/blogs/slug/{slug}", get(blog::get_blog_by_slug))
 }

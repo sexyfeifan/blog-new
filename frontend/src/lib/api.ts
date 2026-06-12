@@ -179,6 +179,9 @@ export const blogApi = {
       `/blogs/drafts?key=${encodeURIComponent(key)}&page=${page}&page_size=${pageSize}`,
     ),
 
+  getDraft: (id: number, key: string) =>
+    request<Blog>(`/blogs/drafts/${id}?key=${encodeURIComponent(key)}`),
+
   getById: (id: number) => request<Blog>(`/blogs/${id}`),
 
   getBySlug: (slug: string) => request<Blog>(`/blogs/slug/${slug}`),
