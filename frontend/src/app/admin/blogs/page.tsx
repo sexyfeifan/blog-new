@@ -64,6 +64,7 @@ export default function BlogListPage() {
     const [summarizeDialogOpen, setSummarizeDialogOpen] = useState(false);
     const [summarizeOnlyEmpty, setSummarizeOnlyEmpty] = useState(true);
     const [summarizeConcurrency, setSummarizeConcurrency] = useState("3");
+    const [statusFilter, setStatusFilter] = useState<string>("all");
     const [importDialogOpen, setImportDialogOpen] = useState(false);
     const [importContent, setImportContent] = useState("");
     const [importCategoryId, setImportCategoryId] = useState<string>("none");
@@ -77,14 +78,15 @@ export default function BlogListPage() {
     const fetchBlogs = useCallback(async (page: number) => {
         setIsLoading(true);
         try {
-            const data = await blogApi.list(page, pageSize);
+            const isPublished = statusFilter === "published" ? true : statusFilter === "draft" ? false : undefined;
+            const data = await blogApi.adminList(page, pageSize, isPublished);
             setBlogs(data);
         } catch (err) {
             toast.error(err instanceof Error ? err.message : "获取博客列表失败");
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [statusFilter]);
 
     useEffect(() => {
         fetchBlogs(currentPage);
@@ -313,6 +315,16 @@ export default function BlogListPage() {
                             一键总结
                         </Button>
                     )}
+                    <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
+                        <SelectTrigger className="w-28 h-8">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">全部文章</SelectItem>
+                            <SelectItem value="published">已发布</SelectItem>
+                            <SelectItem value="draft">未发布</SelectItem>
+                        </SelectContent>
+                    </Select>
                     <Button
                         variant="outline"
                         size="sm"

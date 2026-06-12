@@ -171,8 +171,13 @@ export const blogApi = {
   list: (page = 1, pageSize = 10) =>
     request<PaginatedResponse<Blog>>(
       `/blogs?page=${page}&page_size=${pageSize}`,
-      { next: { revalidate: 60 } },
     ),
+
+  adminList: (page = 1, pageSize = 10, isPublished?: boolean) => {
+    let url = `/admin/blogs?page=${page}&page_size=${pageSize}`;
+    if (isPublished !== undefined) url += `&is_published=${isPublished}`;
+    return request<PaginatedResponse<Blog>>(url);
+  },
 
   listDrafts: (key: string, page = 1, pageSize = 10) =>
     request<PaginatedResponse<Blog>>(
