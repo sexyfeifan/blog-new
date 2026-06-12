@@ -108,7 +108,7 @@ export default function EditBlogPage({ params }: PageProps) {
             setIsLoading(true);
             try {
                 const [blogData, categoriesData, tagsData] = await Promise.all([
-                    blogApi.getById(parseInt(id)),
+                    blogApi.adminGetById(parseInt(id)),
                     categoryApi.list(),
                     tagApi.list(),
                 ]);

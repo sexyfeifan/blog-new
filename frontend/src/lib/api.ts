@@ -189,6 +189,8 @@ export const blogApi = {
 
   getById: (id: number) => request<Blog>(`/blogs/${id}`),
 
+  adminGetById: (id: number) => request<Blog>(`/admin/blogs/${id}`),
+
   getBySlug: (slug: string) => request<Blog>(`/blogs/slug/${slug}`),
 
   create: (data: CreateBlogRequest) =>
