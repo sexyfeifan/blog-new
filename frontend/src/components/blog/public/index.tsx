@@ -227,12 +227,13 @@ export function PublicHeader() {
       <div className={cn(PUBLIC_CONTAINER, "flex min-h-16 items-center justify-between gap-4 py-3")}>
         <Link href="/" className="flex min-w-0 items-center gap-3" aria-label="返回首页">
           {config.owner_avatar ? (
-            <Image
+            <img
               src={config.owner_avatar}
               alt={config.owner_name || config.site_title || "站站点头像"}
               width={36}
               height={36}
               className="h-9 w-9 rounded-full object-cover border-2 border-[#725d42]/20"
+              loading="lazy"
             />
           ) : (
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-sm font-semibold text-white dark:bg-white dark:text-slate-950">
@@ -576,7 +577,7 @@ export function BlogSidebar({ categories, tags, title = "内容索引" }: { cate
         <div className="flex items-center gap-4">
           {config.owner_avatar ? (
             <div className="relative h-14 w-14 rounded-full overflow-hidden border-2 border-white/60 shadow-sm shrink-0">
-              <Image src={config.owner_avatar} alt={config.owner_name || "作者头像"} fill className="object-cover" />
+              <img src={config.owner_avatar} alt={config.owner_name || "作者头像"} className="w-full h-full object-cover" />
             </div>
           ) : (
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white shrink-0">
