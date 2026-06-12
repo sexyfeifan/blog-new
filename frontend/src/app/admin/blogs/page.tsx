@@ -336,6 +336,12 @@ export default function BlogListPage() {
                         <Upload className="mr-2 h-4 w-4" />
                         导入 Markdown
                     </Button>
+                    <Link href="/drafts" target="_blank">
+                        <Button variant="outline" size="sm" title="查看草稿箱（需输入访问密钥）">
+                            <FileCode className="mr-2 h-4 w-4" />
+                            草稿箱
+                        </Button>
+                    </Link>
                     <Button
                         variant="outline"
                         size="sm"
